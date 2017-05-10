@@ -1,0 +1,122 @@
+#lang racket
+(require 2htdp/universe)
+(require 2htdp/image)
+(require "images.rkt")
+(provide (all-defined-out))
+(define limage (image->color-list explode))
+(define (operation l n)
+  (map (λ(x) (make-color (color-red x) (color-green x)
+                         (color-blue x)
+                         (inexact->exact (floor (/ (color-alpha x) (expt n (/ 1 10))))))) l))
+(define (shape-of-you type h)
+  (cond ((= type 1) e1)
+        ((= type 2) e2)
+        ((= type 3) e3)
+        ((= type 4) e4)
+        ((= type 5) e5)))
+(define (map-generalised fx fy fi id l) ;;Higher order function (fx x coordinate generation) 
+  (define (f x y)                       ;;(fy y coordinate genration) fi image corresponding to
+                                        ;list element (id and l for foldr operation) 
+    (underlay/xy y (fx x) (fy x) (fi x)))
+  (foldr f id l))
+(define (coming-wave-display l)
+  (if (not (null? l))
+  (map-generalised (λ(x) 20) (λ(x) (* (car x) 40))
+                   (λ(x) (underlay/xy (shape-of-you (car x) 0) 50 0 (text/font
+                   (~a (cdr x))
+                   24 "red" "Gill Sans" 'swiss 'normal 'bold #f)))
+                   (rectangle 600 300 "outline" "solid") l)
+  (text/font
+                   "Now, the FINAL-WAVE!!!"
+                   44 "red" "Gill Sans" 'swiss 'normal 'bold #t)))
+(define (side-pane l)
+  (underlay/xy
+   (underlay/xy
+    (underlay/xy
+     (underlay/xy (rectangle 670 670 "outline" "black") 20 80
+                  (text/font
+                   (string-append "Money:" (~a (car l)))
+                   24 "red" "Gill Sans" 'swiss 'normal 'bold #f))
+     20 140
+     (text/font
+      (string-append "Health:" (~a (cadr l)))
+      24 "red" "Gill Sans" 'swiss 'normal 'bold #f))
+    20 200
+    (text/font
+     (string-append "Kills:" (~a (caddr l)))
+     24 "red" "Gill Sans" 'swiss 'normal 'bold #f))
+   20 260
+   (coming-wave-display (cadddr l))))
+(define (health-bar h)
+  (define k (if (> h 0) h 0))
+  (underlay/xy (rectangle 30 3 "solid" "black") 0 0 (rectangle (* 30 k) 3 "solid" "green")))
+(define (e-map l)
+  (map-generalised (λ(x) (send x get-x)) (λ(x) (send x get-y))
+                   (λ(x)(rotate (send x get-angle) (shape-of-you
+                                                    (send x get-type) (send x get-h))))
+                   (rectangle 400 400 "outline" "transparent") l))
+(define (death-map l)
+  (map-generalised (λ(x) (+ 20 (- (send (car x) get-xc) (* (cdr x) 4))))
+                   (λ(x) (+ 20 (- (send (car x) get-yc) (* (cdr x) 4))))
+                   (λ(x) (scale (/ (cdr x) 10)
+                        (color-list->bitmap
+                         (operation limage (floor (cdr x))) 80 80)))
+                   (rectangle 420 420 "outline" "transparent") l))
+(define (health-map l)
+  (map-generalised (λ(x) (+ 20 (send x get-x)))
+                   (λ(x) (+ 10 (send x get-y)))
+                   (λ(x) (health-bar (/ (send x get-h) (send x get-max-health))))
+                   (rectangle 420 420 "outline" "transparent") l))
+(define (projectile-map l)
+  (define (f el tl)
+    (let [(pos(send el get-pos))
+          (angle(send el get-angle))
+          (b(send el active?))]
+      (if b
+          (underlay/xy tl (car pos) (cdr pos)
+                       (rotate angle projectile))
+          (underlay/xy tl (- (car pos) 40) (- (cdr pos) 40) explode))))
+  (foldr f (rectangle 400 400 "outline" "transparent") l))
+(define (shot-map l)
+  (define (f el tl)
+    (add-line tl (car el) (cadr el) (caddr el) (cadddr el) "black"))
+  (foldr f (rectangle 400 400 "outline" "transparent") l))
+(define (decode l)
+  (map (λ(x) (list (send x get-x) (send x get-y) (send x get-type) (send x get-angle)
+                   (send x is-reloaded) (send x get-range))) l))
+(define (the type ext)
+  (cond ((= type 1)
+         mac-turret)
+        ((= type 2)
+         snipe-turret)
+        ((= type 3)
+         eddy-turret)
+        ((= type 4)
+         lightning-turret)
+        ((= type 5)
+         air-defense)
+        ((= type 6)
+         (if ext anti-tank
+             anti-tank1))))
+(define (tower-dynam l)
+  (map-generalised (λ(x) (- (* (car x) 40) 40))
+                   (λ(x) (- (* (cadr x) 40) 40))
+                   (λ(x) (rotate (cadddr x) (underlay/xy (circle 40 "outline" "transparent")
+                                                 20 20 (the (caddr x) (cadr (cdddr x))))))
+                   (rectangle 900 600 "outline" "black") (decode l)))
+(define (cropper i)
+  (let* [(i1(rotate 180 i))
+         (i2(freeze 0 0 900 600 i1))
+         (i3(rotate 180 i2))]
+    i3))
+(define (range-circle w l)
+  (let [(a(findf (λ(x) (equal? (cons (send x get-x) (send x get-y))
+                               w)) l))]
+    (if (not (equal? a #f))
+        (let* [(r(send a get-range))
+               (x(send a get-x))
+               (y(send a get-y))]
+          (cropper (underlay/xy (rectangle 900 600 "outline" "black") (- (* x 40) r)
+                                (- (* y 40) r)
+                                (circle r "outline" "black"))))
+        (rectangle 900 600 "outline" "black"))))
